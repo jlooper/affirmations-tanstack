@@ -1,18 +1,30 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { RefreshCw, Loader2, Printer } from 'lucide-react'
 import { getAffirmation } from '../data/fetchAffirmation'
-import { getUnsplashPhoto } from '../data/fetchUnsplashPhoto'
 import { uploadToCloudinary, buildCloudinaryImageUrl } from '../data/buildCloudinaryUrl'
 
 export const Route = createFileRoute('/')({
   loader: async () => {
     try {
-      // Fetch data in parallel
-      const [affirmationData, unsplashData] = await Promise.all([
-        getAffirmation(),
-        getUnsplashPhoto(),
-      ])
+      // First fetch the affirmation
+      const affirmationData = await getAffirmation()
+      
+      // Extract the longest word from the affirmation to use as image search query
+      const words = affirmationData.affirmation.split(' ').filter(word => word.length > 0)
+      const longestWord = words.reduce((longest, current) => 
+        current.length > longest.length ? current : longest, ''
+      ).toLowerCase()
+      
+      // Fetch an image based on the longest word using direct fetch
+      const accessKey = import.meta.env.VITE_UNSPLASH_ACCESS_KEY
+      const unsplashResponse = await fetch(
+        `https://api.unsplash.com/photos/random?client_id=${accessKey}&orientation=landscape&query=${encodeURIComponent(longestWord)}`
+      )
+      if (!unsplashResponse.ok) {
+        throw new Error('Failed to fetch Unsplash photo')
+      }
+      const unsplashData = await unsplashResponse.json() as any
 
       // Upload the Unsplash image to Cloudinary
       const publicId = await uploadToCloudinary(unsplashData.urls.full)
@@ -41,6 +53,7 @@ function AffirmationPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const posterRef = useRef<HTMLDivElement>(null)
+  const wordRef = useRef<HTMLHeadingElement>(null)
 
   // Find the longest word in the affirmation for Successory display
   const longestWord = useMemo(() => {
@@ -55,15 +68,65 @@ function AffirmationPage() {
     return longestWord.split('').join(' · ')
   }, [longestWord])
 
+  // Adjust font size to fit the word in the container
+  useEffect(() => {
+    if (!wordRef.current) return
+    
+    const element = wordRef.current
+    const container = element.parentElement
+    if (!container) return
+
+    // Reset to max size first
+    element.style.fontSize = ''
+    
+    // Check if text overflows
+    if (element.scrollWidth > container.clientWidth) {
+      // Binary search for the right font size
+      let minSize = 8 // minimum 8px
+      let maxSize = 128 // start with max reasonable size
+      let bestSize = minSize
+      
+      const testSize = (size: number) => {
+        element.style.fontSize = `${size}px`
+        return element.scrollWidth <= container.clientWidth
+      }
+      
+      while (minSize <= maxSize) {
+        const midSize = Math.floor((minSize + maxSize) / 2)
+        if (testSize(midSize)) {
+          bestSize = midSize
+          minSize = midSize + 1
+        } else {
+          maxSize = midSize - 1
+        }
+      }
+      
+      element.style.fontSize = `${bestSize}px`
+    }
+  }, [longestWordWithDots])
+
   const handleGetNewOne = async () => {
     setIsLoading(true)
     setError(null)
     try {
-      // Fetch new data
-      const [affirmationData, unsplashData] = await Promise.all([
-        getAffirmation(),
-        getUnsplashPhoto(),
-      ])
+      // First fetch the affirmation
+      const affirmationData = await getAffirmation()
+      
+      // Extract the longest word from the affirmation to use as image search query
+      const words = affirmationData.affirmation.split(' ').filter(word => word.length > 0)
+      const longestWord = words.reduce((longest, current) => 
+        current.length > longest.length ? current : longest, ''
+      ).toLowerCase()
+      
+      // Fetch an image based on the longest word using direct fetch
+      const accessKey = import.meta.env.VITE_UNSPLASH_ACCESS_KEY
+      const unsplashResponse = await fetch(
+        `https://api.unsplash.com/photos/random?client_id=${accessKey}&orientation=landscape&query=${encodeURIComponent(longestWord)}`
+      )
+      if (!unsplashResponse.ok) {
+        throw new Error('Failed to fetch Unsplash photo')
+      }
+      const unsplashData = await unsplashResponse.json() as any
 
       // Upload the Unsplash image to Cloudinary
       const publicId = await uploadToCloudinary(unsplashData.urls.full)
@@ -120,7 +183,6 @@ function AffirmationPage() {
                 }
                 .poster-word {
                   text-align: center;
-                  font-size: 48pt;
                   font-weight: 900;
                   text-transform: uppercase;
                   letter-spacing: 0.2em;
@@ -206,12 +268,16 @@ function AffirmationPage() {
           {/* Main Word (Successory Style) */}
           {!isLoading && !error && (
             <div className="text-center mb-6">
-              <h2 className="text-3xl md:text-6xl font-black uppercase tracking-[0.2em] text-amber-600 mb-4 whitespace-nowrap overflow-x-auto" style={{ fontFamily: 'Georgia, serif' }}>
+              <h2 
+                ref={wordRef}
+                className="text-xl sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-black uppercase tracking-[0.2em] text-amber-600 mb-4 whitespace-nowrap" 
+                style={{ fontFamily: 'Georgia, serif' }}
+              >
                 {longestWordWithDots}
               </h2>
               <div className="w-32 h-1 bg-amber-600 mx-auto mb-6"></div>
               {/* Full Affirmation Text */}
-              <p className="text-lg md:text-xl uppercase tracking-wide text-white leading-relaxed max-w-3xl mx-auto" style={{ fontFamily: 'Georgia, serif' }}>
+              <p className="text-lg md:text-xl uppercase tracking-wide text-white leading-relaxed max-w-3xl mx-auto">
                 {affirmation}
               </p>
             </div>

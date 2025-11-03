@@ -12,8 +12,9 @@ export interface UnsplashPhoto {
 }
 
 export const getUnsplashPhoto = createServerFn({
-  method: 'GET',
-}).handler(async (): Promise<UnsplashPhoto> => {
+  method: 'POST',
+}).handler(async (ctx): Promise<UnsplashPhoto> => {
+  const query = (ctx.data as unknown as { query?: string })?.query
   const accessKey = import.meta.env.VITE_UNSPLASH_ACCESS_KEY
 
   if (!accessKey) {
@@ -21,9 +22,10 @@ export const getUnsplashPhoto = createServerFn({
   }
 
   try {
-    // Fetch a random photo - using the 'nature' keyword for pleasant images
+    // Fetch a photo based on the query, fallback to nature if no query provided
+    const searchQuery = query || 'nature,landscape,peaceful'
     const response = await fetch(
-      `https://api.unsplash.com/photos/random?client_id=${accessKey}&orientation=landscape&query=nature,landscape,peaceful`
+      `https://api.unsplash.com/photos/random?client_id=${accessKey}&orientation=landscape&query=${encodeURIComponent(searchQuery)}`
     )
 
     if (!response.ok) {
